@@ -1,0 +1,59 @@
+{
+  "name": "Личный Telegram Ассистент - Полная версия",
+  "nodes": [
+    {"parameters":{"updates":["message","callback_query"],"additionalFields":{}},"id":"telegram_trigger","name":"Telegram Trigger","type":"n8n-nodes-base.telegramTrigger","typeVersion":1,"position":[250,300],"webhookId":"telegram-assistant","credentials":{"telegramApi":{"id":"1","name":"Telegram Bot API"}}},
+
+    {"parameters":{"functionCode":"const text = $json.message?.text || ''; const lower = text.toLowerCase(); let intent='unknown'; if (lower.startsWith('/start')) intent='start'; else if (lower.startsWith('/tasks') || lower.includes('задач')) intent='tasks_list'; else if (lower.startsWith('/add_task')) intent='task_create'; else if (lower.startsWith('/add_event')) intent='event_create'; else if (lower.startsWith('/note')) intent='note_create'; else if (lower.startsWith('/search')) intent='note_search'; else if (lower.startsWith('/today')) intent='today_plan'; else if (lower.startsWith('/stats')) intent='stats'; else if (lower.startsWith('/remind')) intent='reminder_create'; return [{ intent, text }];"},"id":"classify_intent","name":"Классификация намерения","type":"n8n-nodes-base.function","typeVersion":2,"position":[450,300]},
+
+    {"parameters":{"conditions":{"string":[{"value1":"={{ $json.intent }}","operation":"equals","value2":"start"}]}},"id":"if_start","name":"Проверка: /start","type":"n8n-nodes-base.if","typeVersion":1,"position":[650,120]},
+    {"parameters":{"chatId":"={{ $env.TELEGRAM_CHAT_ID || $json.message.chat.id }}","text":"Привет! Я личный ассистент. Команды: /tasks, /today, /add_task, /add_event, /note, /search, /stats, /remind","additionalFields":{}},"id":"send_welcome","name":"Отправить приветствие","type":"n8n-nodes-base.telegram","typeVersion":1,"position":[880,120],"credentials":{"telegramApi":{"id":"1","name":"Telegram Bot API"}}},
+
+    {"parameters":{"conditions":{"string":[{"value1":"={{ $json.intent }}","operation":"equals","value2":"task_create"}]}},"id":"if_task_create","name":"IF: создать задачу","type":"n8n-nodes-base.if","typeVersion":1,"position":[650,240]},
+    {"parameters":{"functionCode":"const m = $json.text.split(' ').slice(1).join(' '); const parts = m.split('|').map(p=>p.trim()); const out={task_content:'',priority:1,due_date:undefined,todoist_project_id:undefined,labels:[]}; if(parts[0]) out.task_content=parts[0]; for (const p of parts.slice(1)){ if(p.startsWith('p:')) out.priority=Number(p.replace('p:','').trim())||1; else if(p.startsWith('due:')) out.due_date=p.replace('due:','').trim(); else if(p.startsWith('proj:')) out.todoist_project_id=p.replace('proj:','').trim(); else if(p.startsWith('labels:')) out.labels=p.replace('labels:','').split(',').map(s=>s.trim()); } return [out];"},"id":"parse_task_fields","name":"Парсинг параметров задачи","type":"n8n-nodes-base.function","typeVersion":2,"position":[850,240]},
+    {"parameters":{"authentication":"oAuth2","operation":"create","projectId":"={{ $json.todoist_project_id }}","content":"={{ $json.task_content }}","additionalFields":{"dueDate":"={{ $json.due_date }}","priority":"={{ $json.priority }}","labels":"={{ $json.labels }}","description":"Создано через Telegram Assistant"}},"id":"create_todoist_task","name":"Создать задачу в Todoist","type":"n8n-nodes-base.todoist","typeVersion":1,"position":[1100,240],"credentials":{"todoistOAuth2Api":{"id":"2","name":"Todoist OAuth2"}}},
+    {"parameters":{"chatId":"={{ $env.TELEGRAM_CHAT_ID || $json.message.chat.id }}","text":"Задача создана: {{ $json.task_content }}","additionalFields":{}},"id":"confirm_task","name":"Подтверждение задачи","type":"n8n-nodes-base.telegram","typeVersion":1,"position":[1320,240],"credentials":{"telegramApi":{"id":"1","name":"Telegram Bot API"}}},
+
+    {"parameters":{"conditions":{"string":[{"value1":"={{ $json.intent }}","operation":"equals","value2":"event_create"}]}},"id":"if_event_create","name":"IF: создать событие","type":"n8n-nodes-base.if","typeVersion":1,"position":[650,420]},
+    {"parameters":{"functionCode":"const m=$json.text.split(' ').slice(1).join(' '); const parts=m.split('|').map(p=>p.trim()); const out={event_title:parts[0]||'Событие',event_start:parts[1],event_end:parts[2],event_location:undefined,event_description:undefined}; for (const p of parts.slice(3)){ if(p.startsWith('loc:')) out.event_location=p.replace('loc:','').trim(); else if(p.startsWith('desc:')) out.event_description=p.replace('desc:','').trim(); } return [out];"},"id":"parse_event_fields","name":"Парсинг параметров события","type":"n8n-nodes-base.function","typeVersion":2,"position":[850,420]},
+    {"parameters":{"authentication":"oAuth2","operation":"create","calendarId":"primary","start":"={{ $json.event_start }}","end":"={{ $json.event_end }}","summary":"={{ $json.event_title }}","additionalFields":{"description":"={{ $json.event_description }}","location":"={{ $json.event_location }}","sendNotifications":true}},"id":"create_calendar_event","name":"Создать событие в Calendar","type":"n8n-nodes-base.googleCalendar","typeVersion":1,"position":[1100,420],"credentials":{"googleCalendarOAuth2Api":{"id":"3","name":"Google Calendar OAuth2"}}},
+    {"parameters":{"chatId":"={{ $env.TELEGRAM_CHAT_ID || $json.message.chat.id }}","text":"Событие создано: {{ $json.event_title }}","additionalFields":{}},"id":"confirm_event","name":"Подтверждение события","type":"n8n-nodes-base.telegram","typeVersion":1,"position":[1320,420],"credentials":{"telegramApi":{"id":"1","name":"Telegram Bot API"}}},
+
+    {"parameters":{"conditions":{"string":[{"value1":"={{ $json.intent }}","operation":"equals","value2":"note_create"}]}},"id":"if_note_create","name":"IF: создать заметку","type":"n8n-nodes-base.if","typeVersion":1,"position":[650,600]},
+    {"parameters":{"functionCode":"const m=$json.text.split(' ').slice(1).join(' '); const parts=m.split('|').map(p=>p.trim()); return [{note_title:parts[0]||'Заметка',note_content:parts[1]||'',category:(parts[2]||'').replace('cat:','').trim()}];"},"id":"parse_note_fields","name":"Парсинг заметки","type":"n8n-nodes-base.function","typeVersion":2,"position":[850,600]},
+    {"parameters":{"operation":"append","databaseId":"={{ $env.NOTION_DATABASE_ID }}","title":"={{ $json.note_title }}","simplifyOutput":false,"propertiesUi":{"propertyValues":[{"key":"Content","richTextValue":"={{ $json.note_content }}"},{"key":"Category","selectValue":"={{ $json.category }}"}]}},"id":"create_notion_page","name":"Создать заметку в Notion","type":"n8n-nodes-base.notion","typeVersion":2,"position":[1100,600],"credentials":{"notionApi":{"id":"4","name":"Notion API"}}},
+    {"parameters":{"chatId":"={{ $env.TELEGRAM_CHAT_ID || $json.message.chat.id }}","text":"Заметка создана: {{ $json.note_title }}","additionalFields":{}},"id":"confirm_note","name":"Подтверждение заметки","type":"n8n-nodes-base.telegram","typeVersion":1,"position":[1320,600],"credentials":{"telegramApi":{"id":"1","name":"Telegram Bot API"}}},
+
+    {"parameters":{"operation":"executeQuery","query":"CREATE TABLE IF NOT EXISTS reminders (id SERIAL PRIMARY KEY, chat_id TEXT, text TEXT, run_at TIMESTAMP, done BOOLEAN DEFAULT FALSE);"},"id":"init_db","name":"PG: ensure table","type":"n8n-nodes-base.postgres","typeVersion":1,"position":[650,760],"credentials":{"postgres":{"id":"5","name":"PostgreSQL"}}},
+    {"parameters":{"conditions":{"string":[{"value1":"={{ $json.intent }}","operation":"equals","value2":"reminder_create"}]}},"id":"if_reminder","name":"IF: reminder","type":"n8n-nodes-base.if","typeVersion":1,"position":[850,760]},
+    {"parameters":{"functionCode":"const text=$json.text.replace('/remind','').trim(); return [{ reminder_text:text }];"},"id":"parse_reminder","name":"Парсинг напоминания","type":"n8n-nodes-base.function","typeVersion":2,"position":[1050,760]},
+    {"parameters":{"operation":"executeQuery","query":"INSERT INTO reminders (chat_id, text, run_at) VALUES ($1, $2, NOW() + INTERVAL '2 hours')","additionalFields":{"queryParams":"={{ [$env.TELEGRAM_CHAT_ID || $json.message.chat.id, $json.reminder_text] }}"}},"id":"insert_reminder","name":"PG: insert reminder","type":"n8n-nodes-base.postgres","typeVersion":1,"position":[1250,760],"credentials":{"postgres":{"id":"5","name":"PostgreSQL"}}},
+    {"parameters":{"chatId":"={{ $env.TELEGRAM_CHAT_ID || $json.message.chat.id }}","text":"Напоминание сохранено и будет отправлено вовремя","additionalFields":{}},"id":"confirm_reminder","name":"Подтверждение напоминания","type":"n8n-nodes-base.telegram","typeVersion":1,"position":[1450,760],"credentials":{"telegramApi":{"id":"1","name":"Telegram Bot API"}}}
+  ],
+  "connections": {
+    "telegram_trigger": {"main": [[{"node":"classify_intent","type":"main","index":0}]]},
+    "if_start": {"main": [[{"node":"send_welcome","type":"main","index":0}],[]]},
+    "classify_intent": {"main": [[{"node":"if_start","type":"main","index":0},{"node":"if_task_create","type":"main","index":0},{"node":"if_event_create","type":"main","index":0},{"node":"if_note_create","type":"main","index":0},{"node":"init_db","type":"main","index":0},{"node":"if_reminder","type":"main","index":0}]]},
+    "if_task_create": {"main": [[{"node":"parse_task_fields","type":"main","index":0}],[]]},
+    "parse_task_fields": {"main": [[{"node":"create_todoist_task","type":"main","index":0}]]},
+    "create_todoist_task": {"main": [[{"node":"confirm_task","type":"main","index":0}]]},
+
+    "if_event_create": {"main": [[{"node":"parse_event_fields","type":"main","index":0}],[]]},
+    "parse_event_fields": {"main": [[{"node":"create_calendar_event","type":"main","index":0}]]},
+    "create_calendar_event": {"main": [[{"node":"confirm_event","type":"main","index":0}]]},
+
+    "if_note_create": {"main": [[{"node":"parse_note_fields","type":"main","index":0}],[]]},
+    "parse_note_fields": {"main": [[{"node":"create_notion_page","type":"main","index":0}]]},
+    "create_notion_page": {"main": [[{"node":"confirm_note","type":"main","index":0}]]},
+
+    "init_db": {"main": [[{"node":"if_reminder","type":"main","index":0}]]},
+    "if_reminder": {"main": [[{"node":"parse_reminder","type":"main","index":0}],[]]},
+    "parse_reminder": {"main": [[{"node":"insert_reminder","type":"main","index":0}]]},
+    "insert_reminder": {"main": [[{"node":"confirm_reminder","type":"main","index":0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-15T00:00:00.000Z",
+  "versionId": "2"
+}
